@@ -9,7 +9,7 @@ import cake40 from "./assets/40.png";
 import cake20 from "./assets/20.png";
 import "./App.css";
 import Confetti from "./Confetti";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import birthdaySong from "./assets/bdayaudo.mp3";
 
 
@@ -35,12 +35,6 @@ export default function App() {
     playAudio();
     }, []);
 
-  useEffect(() => {
-    startMicMonitoring();
-    return () => {
-      stopMicMonitoring();
-    };
-  }, []);
   const handleCakeClick = async () => {
     const audio = audioRef.current;
     audio.play();
@@ -55,65 +49,9 @@ export default function App() {
     return cake100;
   };
 
-  const startMicMonitoring = async () => {
-    if (micStreamRef.current) return;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      micStreamRef.current = stream;
-
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      const audioCtx = new AudioContext();
-      audioCtxRef.current = audioCtx;
-
-  const source = audioCtx.createMediaStreamSource(stream);
-  const gainNode = audioCtx.createGain();
-  const sensitivity = 3.0;
-  gainNode.gain.value = sensitivity;
-  gainNodeRef.current = gainNode;
-
-  const analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 2048;
-  analyserRef.current = analyser;
-  source.connect(gainNode);
-  gainNode.connect(analyser);
-
-      const data = new Float32Array(analyser.fftSize);
-
-      const loop = () => {
-        analyser.getFloatTimeDomainData(data);
-        let sum = 0;
-        for (let i = 0; i < data.length; i++) {
-          const v = data[i];
-          sum += v * v;
-        }
-        const rms = Math.sqrt(sum / data.length);
-
-        try { console.debug('mic rms=', rms.toFixed(4)); } catch (e) {}
-        const chosen = pickStaticFrame(rms);
-        setStaticFrame((prev) => {
-          if (prev === chosen) return prev;
-          return chosen;
-        });
-        rafRef.current = requestAnimationFrame(loop);
-      };
-
-      rafRef.current = requestAnimationFrame(loop);
-    } catch (err) {
-      console.warn("Microphone access denied or failed:", err);
-    }
-  };
-
   const [celebrating, setCelebrating] = useState(false);
 
-  useEffect(() => {
-    if (staticFrame === cake20) {
-      stopMicMonitoring(false);
-      setCelebrating(true);
-    }
-  }, [staticFrame]);
-
-
-  const stopMicMonitoring = (resetAnimation = true) => {
+  const stopMicMonitoring = useCallback((resetAnimation = true) => {
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -141,7 +79,69 @@ export default function App() {
     if (resetAnimation) {
       setStaticFrame(null);
     }
-  };
+  }, []);
+
+  const startMicMonitoring = useCallback(async () => {
+    if (micStreamRef.current) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStreamRef.current = stream;
+
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      const audioCtx = new AudioContext();
+      audioCtxRef.current = audioCtx;
+
+      const source = audioCtx.createMediaStreamSource(stream);
+      const gainNode = audioCtx.createGain();
+      const sensitivity = 3.0;
+      gainNode.gain.value = sensitivity;
+      gainNodeRef.current = gainNode;
+
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+      analyserRef.current = analyser;
+      source.connect(gainNode);
+      gainNode.connect(analyser);
+
+      const data = new Float32Array(analyser.fftSize);
+
+      const loop = () => {
+        analyser.getFloatTimeDomainData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) {
+          const v = data[i];
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / data.length);
+
+        try { console.debug("mic rms=", rms.toFixed(4)); } catch (e) {}
+        const chosen = pickStaticFrame(rms);
+        setStaticFrame((prev) => {
+          if (prev === chosen) return prev;
+          return chosen;
+        });
+        rafRef.current = requestAnimationFrame(loop);
+      };
+
+      rafRef.current = requestAnimationFrame(loop);
+    } catch (err) {
+      console.warn("Microphone access denied or failed:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    startMicMonitoring();
+    return () => {
+      stopMicMonitoring();
+    };
+  }, [startMicMonitoring, stopMicMonitoring]);
+
+  useEffect(() => {
+    if (staticFrame === cake20) {
+      stopMicMonitoring(false);
+      setCelebrating(true);
+    }
+  }, [staticFrame, stopMicMonitoring]);
 
   return (
     <div className="App">
